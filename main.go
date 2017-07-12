@@ -21,6 +21,7 @@ func newLState() *lua.LState {
 
 				go func() {
 					workerL := newLState()
+					defer workerL.Close()
 
 					workerL.SetGlobal("parent", lua.LChannel(parent))
 
