@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	luar "layeh.com/gopher-luar"
-
 	lua "github.com/yuin/gopher-lua"
 )
 
@@ -15,35 +13,40 @@ func newLState() *lua.LState {
 	L.PreloadModule(
 		"golem",
 		func(L *lua.LState) int {
-			mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{})
-			L.SetField(mod, "worker", luar.New(L, func(name string, parent chan lua.LValue) chan lua.LValue {
-				worker := make(chan lua.LValue)
+			mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
+				"worker": func(L *lua.LState) int {
+					name := L.CheckString(1)
+					parent := L.CheckChannel(2)
 
-				go func() {
-					workerL := newLState()
-					defer workerL.Close()
+					worker := make(chan lua.LValue)
 
-					workerL.SetGlobal("parent", lua.LChannel(parent))
+					go func() {
+						workerL := newLState()
+						defer workerL.Close()
 
-					if err := workerL.DoFile(name); err != nil {
-						close(worker)
-					}
+						workerL.SetGlobal("parent", lua.LChannel(parent))
 
-					workerFn := workerL.GetGlobal("worker")
-
-					for msg := range worker {
-						if err := workerL.CallByParam(lua.P{
-							Fn:      workerFn,
-							NRet:    0,
-							Protect: true,
-						}, msg); err != nil {
+						if err := workerL.DoFile(name); err != nil {
 							close(worker)
 						}
-					}
-				}()
 
-				return worker
-			}))
+						workerFn := workerL.GetGlobal("worker")
+
+						for msg := range worker {
+							if err := workerL.CallByParam(lua.P{
+								Fn:      workerFn,
+								NRet:    0,
+								Protect: true,
+							}, msg); err != nil {
+								close(worker)
+							}
+						}
+					}()
+
+					L.Push(lua.LChannel(worker))
+					return 1
+				},
+			})
 			L.Push(mod)
 			return 1
 		},
