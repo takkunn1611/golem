@@ -1,13 +1,41 @@
 local golem = require("golem")
 
 function main()
-    local req = channel.make()
-    local worker = golem.worker("worker.lua", req)
+    local server = channel.make()
 
-    worker:send("test")
+    golem.worker(
+        "cron.lua",
+        server,
+        {
+            spec="@every 1s",
+            command={
+                func="say",
+                params={
+                    message="Yo!!"
+                }
+            }
+        }
+    )
+    
+    -- local irc = golem.worker(
+    --     "irc.lua",
+    --     server,
+    --     {
+    --         user="foo",
+    --         server="127.0.0.1:6667",
+    --         channels={
+    --             "bar"
+    --         }
+    --     }
+    -- )
 
-    local ok, msg = req:receive()
-    req:close()
+    while true do
+        local ok, req = server:receive()
+        if not ok then
+            break
+        end
 
-    print("main: "..msg)
+        print(req.params.message)
+        -- irc:send(req)
+    end
 end

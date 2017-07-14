@@ -5,7 +5,12 @@ import (
 	"fmt"
 	"os"
 
+	luar "layeh.com/gopher-luar"
+
+	"github.com/robfig/cron"
+	irc "github.com/thoj/go-ircevent"
 	lua "github.com/yuin/gopher-lua"
+	luajson "layeh.com/gopher-json"
 )
 
 func newLState() *lua.LState {
@@ -17,6 +22,7 @@ func newLState() *lua.LState {
 				"worker": func(L *lua.LState) int {
 					name := L.CheckString(1)
 					parent := L.CheckChannel(2)
+					config := L.CheckAny(3)
 
 					worker := make(chan lua.LValue)
 
@@ -25,8 +31,10 @@ func newLState() *lua.LState {
 						defer workerL.Close()
 
 						workerL.SetGlobal("parent", lua.LChannel(parent))
+						workerL.SetGlobal("config", config)
 
 						if err := workerL.DoFile(name); err != nil {
+							fmt.Fprintf(os.Stderr, "%s: %v\n", Name, err)
 							close(worker)
 						}
 
@@ -38,6 +46,7 @@ func newLState() *lua.LState {
 								NRet:    0,
 								Protect: true,
 							}, msg); err != nil {
+								fmt.Fprintf(os.Stderr, "%s: %v\n", Name, err)
 								close(worker)
 							}
 						}
@@ -51,6 +60,33 @@ func newLState() *lua.LState {
 			return 1
 		},
 	)
+	L.PreloadModule(
+		"irc",
+		func(L *lua.LState) int {
+			mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
+				"irc": func(L *lua.LState) int {
+					L.Push(luar.New(L, irc.IRC(L.CheckString(1), L.CheckString(2))))
+					return 1
+				},
+			})
+			L.Push(mod)
+			return 1
+		},
+	)
+	L.PreloadModule(
+		"cron",
+		func(L *lua.LState) int {
+			mod := L.SetFuncs(L.NewTable(), map[string]lua.LGFunction{
+				"new": func(L *lua.LState) int {
+					L.Push(luar.New(L, cron.New()))
+					return 1
+				},
+			})
+			L.Push(mod)
+			return 1
+		},
+	)
+	luajson.Preload(L)
 	return L
 }
 
